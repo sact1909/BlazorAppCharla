@@ -1,14 +1,24 @@
+name: todoblazor
+
+# Desplegar como recurso "Docker Compose" en Coolify. Coolify detecta cada servicio que declara
+# `expose` y le da un campo "Domains" en su UI (Settings -> Domains): ahi se asigna el dominio real
+# (o "Generate Domain" para una URL sslip.io temporal) y Coolify configura Traefik + TLS solo.
+
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-todos}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en las variables de entorno}
     volumes:
+      # Volumen con nombre: sobrevive redeploys y rebuilds de imagen.
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-todos}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -17,20 +27,21 @@ services:
   api:
     build:
       context: ./TodoApi
-    # El proxy de Coolify necesita saber a que puerto enrutar
-    expose:
-      - "8080"
-    environment:
-      # Coolify genera el dominio publico para este servicio
-      SERVICE_FQDN_API_8080: /
-      POSTGRES_HOST: db
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      dockerfile: Dockerfile
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-todos}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    expose:
+      - "8080"
+    networks:
+      - internal
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
       interval: 10s
@@ -41,16 +52,18 @@ services:
   web:
     build:
       context: ./TodoWeb
-    expose:
-      - "8080"
-    environment:
-      # Coolify genera el dominio publico para este servicio
-      SERVICE_FQDN_WEB_8080: /
-      # El frontend (Blazor Server) llama al API por la red interna
-      API_URL: http://api:8080
+      dockerfile: Dockerfile
+    restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
+    environment:
+      # Blazor Server renderiza en el servidor, asi que llama al API por la red interna.
+      API_URL: ${API_URL:-http://api:8080}
+    expose:
+      - "8080"
+    networks:
+      - internal
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
       interval: 10s
@@ -60,3 +73,9 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  # Red interna entre los tres servicios. Coolify engancha su propia red de Traefik a api/web
+  # automaticamente cuando les asignas un dominio, por eso no se declara aqui.
+  internal:
+    driver: bridge
