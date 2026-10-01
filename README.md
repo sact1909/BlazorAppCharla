@@ -22,10 +22,10 @@ El frontend queda en `http://localhost:8080` (segun el puerto que mapees).
 
 ## Desplegar en Coolify
 
-Coolify genera las URLs publicas solo, con la convencion `SERVICE_FQDN_<SERVICIO>`. Cada servicio publico declara ademas su puerto con `expose`:
+Coolify genera las URLs publicas solo. La convencion es `SERVICE_FQDN_<SERVICIO>`, con sufijo de puerto cuando el proxy debe enrutar a un puerto interno concreto. Cada servicio publico declara ademas su puerto con `expose`:
 
-- `SERVICE_FQDN_API` → URL del API
-- `SERVICE_FQDN_WEB` → URL del frontend
+- `SERVICE_FQDN_API_8080` → URL del API
+- `SERVICE_FQDN_WEB_8080` → URL del frontend
 
 Las unicas variables que defines tu en el panel son las de la base de datos:
 
@@ -37,7 +37,7 @@ POSTGRES_PASSWORD=loquesea
 
 ## Notas
 
-Como Blazor Server renderiza en el servidor, el contenedor `web` llama al API por la red interna de Docker (`API_URL: http://api:8080`), no por la URL publica. Si prefieres que vaya por la publica, cambia esa linea por `API_URL: ${SERVICE_FQDN_API}`.
+Como Blazor Server renderiza en el servidor, el contenedor `web` llama al API por la red interna de Docker (`API_URL: http://api:8080`), no por la URL publica. Si prefieres que vaya por la publica, cambia esa linea por `API_URL: ${SERVICE_URL_API_8080}`.
 
 Los healthchecks estan encadenados: el API no arranca hasta que Postgres responde `pg_isready`, y el web no arranca hasta que `/health` del API da 200.
 
