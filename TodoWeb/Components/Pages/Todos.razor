@@ -1,0 +1,133 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IHttpClientFactory HttpFactory
+
+<PageTitle>ToDo List</PageTitle>
+
+<h1>ToDo List</h1>
+
+<div class="input-group mb-3" style="max-width: 500px;">
+    <input class="form-control" placeholder="Nueva tarea..." @bind="newTitle" @bind:event="oninput"
+           @onkeyup="@(e => { if (e.Key == "Enter") _ = Create(); })" />
+    <button class="btn btn-primary" @onclick="Create" disabled="@string.IsNullOrWhiteSpace(newTitle)">Agregar</button>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (todos is null)
+{
+    <p><em>Cargando...</em></p>
+}
+else if (todos.Count == 0)
+{
+    <p><em>No hay tareas.</em></p>
+}
+else
+{
+    <table class="table table-striped" style="max-width: 700px;">
+        <thead>
+            <tr><th style="width:50px"></th><th>Tarea</th><th style="width:160px"></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var todo in todos)
+            {
+                <tr @key="todo.Id">
+                    <td>
+                        <input type="checkbox" class="form-check-input" checked="@todo.IsDone"
+                               @onchange="@(e => Toggle(todo, (bool)e.Value!))" />
+                    </td>
+                    <td>
+                        @if (editing?.Id == todo.Id)
+                        {
+                            <input class="form-control form-control-sm" @bind="editing.Title"
+                                   @onkeyup="@(e => { if (e.Key == "Enter") _ = SaveEdit(); })" />
+                        }
+                        else
+                        {
+                            <span style="@(todo.IsDone ? "text-decoration: line-through; opacity:.6" : "")">@todo.Title</span>
+                        }
+                    </td>
+                    <td class="text-end">
+                        @if (editing?.Id == todo.Id)
+                        {
+                            <button class="btn btn-sm btn-success" @onclick="SaveEdit">Guardar</button>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => editing = null">Cancelar</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(todo)">Editar</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(todo.Id)">Borrar</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Todo>? todos;
+    private Todo? editing;
+    private string newTitle = "";
+    private string? error;
+
+    private HttpClient Http => HttpFactory.CreateClient("api");
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        try
+        {
+            error = null;
+            todos = await Http.GetFromJsonAsync<List<Todo>>("/api/todos");
+        }
+        catch (Exception ex)
+        {
+            error = $"Error conectando al API: {ex.Message}";
+            todos = new();
+        }
+    }
+
+    private async Task Create()
+    {
+        if (string.IsNullOrWhiteSpace(newTitle)) return;
+        await Http.PostAsJsonAsync("/api/todos", new Todo { Title = newTitle });
+        newTitle = "";
+        await Load();
+    }
+
+    private void StartEdit(Todo todo) =>
+        editing = new Todo { Id = todo.Id, Title = todo.Title, IsDone = todo.IsDone };
+
+    private async Task SaveEdit()
+    {
+        if (editing is null) return;
+        await Http.PutAsJsonAsync($"/api/todos/{editing.Id}", editing);
+        editing = null;
+        await Load();
+    }
+
+    private async Task Toggle(Todo todo, bool isDone)
+    {
+        todo.IsDone = isDone;
+        await Http.PutAsJsonAsync($"/api/todos/{todo.Id}", todo);
+        await Load();
+    }
+
+    private async Task Delete(int id)
+    {
+        await Http.DeleteAsync($"/api/todos/{id}");
+        await Load();
+    }
+
+    public class Todo
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public bool IsDone { get; set; }
+    }
+}

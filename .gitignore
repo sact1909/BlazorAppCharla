@@ -1,0 +1,11 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Entorno
+.env
+
+# IDE
+.vs/
+.idea/
